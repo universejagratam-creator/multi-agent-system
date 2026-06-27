@@ -1,0 +1,230 @@
+# =============================================================================
+#  DOCKER COMPOSE - LIGHTWEIGHT MODE
+#  Untuk Intel Celeron N4000 (RAM 1.9GB)
+#  Hanya menjalankan: CEO + 2 CTO Prioritas + Redis
+# =============================================================================
+#
+#  Strategi Resource:
+#  - CEO (claude-swarm): Orchestrator (WAJIB)
+#  - CTO Office (JARVIS): Automation core
+#  - CTO Trading (RL): Trading intelligence
+#  - Redis: Message broker
+#  - CISO Shield: Security scanner (on-demand)
+#
+#  Total estimasi RAM: ~800MB - 1GB
+# =============================================================================
+
+version: "3.9"
+
+x-defaults: &defaults
+  restart: unless-stopped
+  networks:
+    - mas-net
+  env_file:
+    - .env
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "5m"
+      max-file: "2"
+
+x-resource-limits: &resource-limits
+  mem_limit: 192m
+  mem_reservation: 96m
+  cpus: 0.3
+  pids_limit: 50
+
+x-volumes: &shared-volumes
+  volumes:
+    - mas_workspace:/workspace:rw
+    - mas_data:/data:rw
+    - mas_config:/config:ro
+    - ./config/swarm.yaml:/workspace/swarm.yaml:ro
+
+# =============================================================================
+#  SERVICES (Lightweight - Hanya agent esensial)
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  #  1. CEO - WAJIB (Orchestrator)
+  # ---------------------------------------------------------------------------
+  ceo:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-ceo
+    hostname: ceo.mas.local
+    build:
+      context: ./services/ceo
+      dockerfile: Dockerfile
+    image: mas/ceo:latest
+    ports:
+      - "${CEO_PORT:-8080}:8080"
+    environment:
+      - AGENT_ROLE=ceo
+      - AGENT_NAME=claude-swarm
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDESWARM_MODEL=${CLAUDESWARM_MODEL:-haiku}
+      - CLAUDESWARM_BUDGET=${CLAUDESWARM_BUDGET:-2.0}
+      - CLAUDESWARM_MAX_AGENTS=${CLAUDESWARM_MAX_AGENTS:-2}
+      - CLAUDESWARM_QUALITY_GATE=${CLAUDESWARM_QUALITY_GATE:-false}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  #  2. CTO Office - PRIORITAS (Automation)
+  # ---------------------------------------------------------------------------
+  cto-office:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-cto-office
+    hostname: cto-office.mas.local
+    build:
+      context: ./services/cto-office
+      dockerfile: Dockerfile
+    image: mas/cto-office:latest
+    ports:
+      - "${CTO_OFFICE_PORT:-8081}:8081"
+    environment:
+      - AGENT_ROLE=cto-office
+      - AGENT_NAME=jarvis
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - BROWSER_HEADLESS=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  #  3. CTO Trading RL - PRIORITAS (Trading Intelligence)
+  # ---------------------------------------------------------------------------
+  cto-trading-rl:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-cto-trading-rl
+    hostname: cto-trading-rl.mas.local
+    build:
+      context: ./services/cto-trading-rl
+      dockerfile: Dockerfile
+    image: mas/cto-trading-rl:latest
+    ports:
+      - "${CTO_TRADING_RL_PORT:-8082}:8082"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=behavioral-rl
+      - TRADING_MODE=paper
+      - TRADING_SYMBOLS=BTC-USD,ETH-USD
+      - TRADING_INITIAL_CAPITAL=10000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - mas_workspace:/workspace:rw
+      - mas_data:/data:rw
+      - mas_config:/config:ro
+      - mas_models:/models:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  #  4. CISO Shield - ON-DEMAND (Security scanner)
+  #     Tidak auto-start, dijalankan hanya saat diperlukan
+  #     Aktifkan dengan: docker compose --profile security up -d
+  # ---------------------------------------------------------------------------
+  ciso-shield:
+    <<: [*defaults, *shared-volumes]
+    container_name: mas-ciso-shield
+    hostname: ciso-shield.mas.local
+    build:
+      context: ./services/ciso-shield
+      dockerfile: Dockerfile
+    image: mas/ciso-shield:latest
+    ports:
+      - "${CISO_SHIELD_PORT:-8085}:8085"
+    environment:
+      - AGENT_ROLE=ciso
+      - AGENT_NAME=agentshield
+      - SHIELD_SCAN_DIRS=/workspace,/data,/config
+    mem_limit: 128m
+    mem_reservation: 64m
+    cpus: 0.2
+    profiles:
+      - security
+
+  # ---------------------------------------------------------------------------
+  #  5. INFRA: Redis - Message Broker (WAJIB)
+  # ---------------------------------------------------------------------------
+  redis:
+    <<: [*defaults]
+    container_name: mas-redis
+    hostname: redis.mas.local
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - mas_redis:/data:rw
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 48m
+    mem_reservation: 24m
+    cpus: 0.1
+
+# =============================================================================
+#  NETWORKS
+# =============================================================================
+networks:
+  mas-net:
+    name: ${MAS_NETWORK_NAME:-mas-net}
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# =============================================================================
+#  VOLUMES
+# =============================================================================
+volumes:
+  mas_workspace:
+    name: mas_workspace
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_WORKSPACE_DIR:-./workspace}
+      o: bind
+  mas_data:
+    name: mas_data
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_DATA_DIR:-./data}
+      o: bind
+  mas_config:
+    name: mas_config
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_CONFIG_DIR:-./config}
+      o: bind
+  mas_models:
+    name: mas_models
+    driver: local
+  mas_redis:
+    name: mas_redis_data
+    driver: local

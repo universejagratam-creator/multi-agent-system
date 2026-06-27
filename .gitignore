@@ -1,0 +1,53 @@
+# =============================================================================
+#  .gitignore - Multi-Agent System (MAS) Ecosystem
+# =============================================================================
+
+# Environment files (BERISI API KEY - JANGAN DI-COMMIT!)
+.env
+.env.local
+.env.production
+.env.hybrid
+
+# File secrets (tidak boleh di-commit!)
+# Setiap file di secrets/ berisi satu API key plaintext
+# Gunakan enkripsi SOPS untuk production
+secrets/*
+!secrets/.gitkeep
+
+# Git-cloned repositories (dibuat oleh setup.sh, bukan source code)
+repos/
+
+# Data dan workspace (bind mount volumes)
+workspace/
+data/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env/
+.venv/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Docker
+.docker/
+docker-compose.override.yml   # optional, masing-masing bisa beda
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

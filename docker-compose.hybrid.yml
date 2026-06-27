@@ -1,0 +1,398 @@
+# =============================================================================
+#  DOCKER COMPOSE - HYBRID CLOUD MODE
+#  Untuk VPS / GitHub Actions Self-Hosted Runner
+#  Menjalankan agent berat yang tidak bisa dijalankan di laptop Celeron
+# =============================================================================
+#
+#  Cara penggunaan di VPS:
+#    1. Copy folder ini ke VPS: scp -r multi-agent-system user@vps:~
+#    2. ssh user@vps
+#    3. cd multi-agent-system
+#    4. docker compose -f docker-compose.hybrid.yml up -d
+#
+#  ============================================================================
+#  KOMUNIKASI DENGAN LOCAL:
+#  =========================
+#  Local laptop: CEO + JARVIS + Redis (port 6379)
+#  Cloud VPS:    Trading RL + HyperMamba + Commerce + CISO
+#                Redis slave (replicate dari local Redis)
+#
+#  Channel Redis Pub/Sub:
+#    agent:ceo:commands      → CEO publish task
+#    agent:trading:results   → Trading agent publish hasil
+#    agent:commerce:events   → Commerce events
+#    agent:ciso:alerts       → Security alerts
+# =============================================================================
+
+version: "3.9"
+
+x-defaults: &defaults
+  restart: unless-stopped
+  networks:
+    - mas-hybrid-net
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# Resource limits untuk VPS (asumsi 4-8GB RAM)
+x-resource-limits: &resource-limits
+  mem_limit: 1g
+  mem_reservation: 512m
+  cpus: 1.0
+  pids_limit: 200
+
+# =============================================================================
+#  SERVICES - Hanya agent berat (ringan dijalankan di lokal)
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  #  1. CTO TRADING RL - Behavioral RL (PyTorch)
+  #  Membutuhkan: 4-8GB RAM untuk training
+  # ---------------------------------------------------------------------------
+  cto-trading-rl:
+    <<: [*defaults, *resource-limits]
+    container_name: mas-hybrid-trading-rl
+    hostname: trading-rl.hybrid.mas.local
+    build:
+      context: ./services/cto-trading-rl
+      dockerfile: Dockerfile
+    image: mas/cto-trading-rl:latest
+    ports:
+      - "${CTO_TRADING_RL_PORT:-8082}:8082"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=behavioral-rl
+      - SERVICE_PORT=8082
+      - TRADING_MODE=${TRADING_MODE:-paper}
+      - TRADING_SYMBOLS=${TRADING_SYMBOLS:-BTC-USD,ETH-USD}
+      - TRADING_INITIAL_CAPITAL=${TRADING_INITIAL_CAPITAL:-10000}
+      - CVAR_ALPHA=${CVAR_ALPHA:-0.05}
+      - MAX_POSITION_SIZE=${MAX_POSITION_SIZE:-0.1}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY}
+      - REDIS_URL=${HYBRID_REDIS_URL:-redis://redis-replica:6379/0}
+    depends_on:
+      redis-replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - hybrid_workspace:/workspace:rw
+      - hybrid_data:/data:rw
+      - hybrid_models:/models:rw
+
+  # ---------------------------------------------------------------------------
+  #  2. CTO TRADING HYPER - HyperMamba (State Space Models)
+  # ---------------------------------------------------------------------------
+  cto-trading-hyper:
+    <<: [*defaults, *resource-limits]
+    container_name: mas-hybrid-trading-hyper
+    hostname: trading-hyper.hybrid.mas.local
+    build:
+      context: ./services/cto-trading-hyper
+      dockerfile: Dockerfile
+    image: mas/cto-trading-hyper:latest
+    ports:
+      - "${CTO_TRADING_HYPER_PORT:-8083}:8083"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=hypermamba
+      - SERVICE_PORT=8083
+      - TRADING_MODE=${TRADING_MODE:-paper}
+      - TRADING_SYMBOLS=${TRADING_SYMBOLS:-BTC-USD,ETH-USD}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - REDIS_URL=${HYBRID_REDIS_URL:-redis://redis-replica:6379/0}
+    depends_on:
+      redis-replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - hybrid_workspace:/workspace:rw
+      - hybrid_data:/data:rw
+      - hybrid_models:/models:rw
+
+  # ---------------------------------------------------------------------------
+  #  3. CTO COMMERCE - Agent of Commerce (Solana)
+  # ---------------------------------------------------------------------------
+  cto-commerce:
+    <<: [*defaults]
+    container_name: mas-hybrid-commerce
+    hostname: commerce.hybrid.mas.local
+    build:
+      context: ./services/cto-commerce
+      dockerfile: Dockerfile
+    image: mas/cto-commerce:latest
+    ports:
+      - "${CTO_COMMERCE_PORT:-8084}:8084"
+    environment:
+      - AGENT_ROLE=cto-commerce
+      - AGENT_NAME=agentofcommerce
+      - SERVICE_PORT=8084
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      - SOLANA_PRIVATE_KEY=${SOLANA_PRIVATE_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=${HYBRID_REDIS_URL:-redis://redis-replica:6379/0}
+    depends_on:
+      redis-replica:
+        condition: service_healthy
+    mem_limit: 512m
+    mem_reservation: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    volumes:
+      - hybrid_workspace:/workspace:rw
+      - hybrid_data:/data:rw
+
+  # ---------------------------------------------------------------------------
+  #  4. CISO SHIELD - Security Scanner
+  # ---------------------------------------------------------------------------
+  ciso-shield:
+    <<: [*defaults]
+    container_name: mas-hybrid-ciso-shield
+    hostname: ciso-shield.hybrid.mas.local
+    build:
+      context: ./services/ciso-shield
+      dockerfile: Dockerfile
+    image: mas/ciso-shield:latest
+    ports:
+      - "${CISO_SHIELD_PORT:-8085}:8085"
+    environment:
+      - AGENT_ROLE=ciso
+      - AGENT_NAME=agentshield
+      - SERVICE_PORT=8085
+      - SHIELD_SCAN_DIRS=${SHIELD_SCAN_DIRS:-/workspace,/data,/config}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: 0.3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - hybrid_workspace:/workspace:rw
+      - hybrid_data:/data:rw
+
+  # ---------------------------------------------------------------------------
+  #  5. CISO ECC - Everything Claude Code
+  # ---------------------------------------------------------------------------
+  ciso-ecc:
+    <<: [*defaults]
+    container_name: mas-hybrid-ciso-ecc
+    hostname: ciso-ecc.hybrid.mas.local
+    build:
+      context: ./services/ciso-ecc
+      dockerfile: Dockerfile
+    image: mas/ciso-ecc:latest
+    ports:
+      - "${CISO_ECC_PORT:-8086}:8086"
+    environment:
+      - AGENT_ROLE=ciso
+      - AGENT_NAME=ecc
+      - SERVICE_PORT=8086
+      - ECC_MODE=${ECC_MODE:-guardian}
+      - ECC_POLICY_FILE=${ECC_POLICY_FILE:-/config/ecc-policy.yaml}
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: 0.3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - hybrid_workspace:/workspace:rw
+      - hybrid_data:/data:rw
+      - hybrid_config:/config:ro
+
+  # ---------------------------------------------------------------------------
+  #  6. REDIS REPLICA - Sinkronisasi dengan local Redis
+  #  Catatan: Konfigurasikan REDIS_MASTER_HOST ke IP lokal laptop
+  # ---------------------------------------------------------------------------
+  redis-replica:
+    <<: [*defaults]
+    container_name: mas-hybrid-redis
+    hostname: redis.hybrid.mas.local
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --port 6379
+      --replicaof ${REDIS_MASTER_HOST:-localhost} ${REDIS_MASTER_PORT:-6379}
+      --replica-read-only yes
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 64m
+    mem_reservation: 32m
+    cpus: 0.1
+    volumes:
+      - hybrid_redis:/data:rw
+    # Hanya aktif jika REDIS_MASTER_HOST di-set
+    # redis-replica adalah CORE dependency — selalu nyala
+    # Tidak perlu profile karena trading services bergantung padanya
+
+  # ---------------------------------------------------------------------------
+  #  7. SSH TUNNEL - Koneksi aman ke local laptop
+  #  Membuat reverse tunnel untuk Redis replication
+  # ---------------------------------------------------------------------------
+  ssh-tunnel:
+    <<: [*defaults]
+    container_name: mas-hybrid-tunnel
+    image: alpine:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      apk add --no-cache openssh autossh > /dev/null 2>&1 &&
+      mkdir -p /root/.ssh &&
+      printf '%s' "$SSH_PRIVATE_KEY" > /root/.ssh/id_rsa &&
+      chmod 600 /root/.ssh/id_rsa &&
+      ssh-keyscan -H "$SSH_HOST" >> /root/.ssh/known_hosts 2>/dev/null &&
+      exec autossh -M 0 \
+        -o ServerAliveInterval=30 \
+        -o ServerAliveCountMax=3 \
+        -o ExitOnForwardFailure=yes \
+        -N -R "${REDIS_CLOUD_PORT:-6380}:redis-replica:6379" \
+        "${SSH_USER:-root}@${SSH_HOST}" -p "${SSH_PORT:-22}"
+    environment:
+      SSH_PRIVATE_KEY: ${SSH_PRIVATE_KEY}
+      SSH_HOST: ${SSH_HOST}
+      SSH_USER: ${SSH_USER:-root}
+      SSH_PORT: ${SSH_PORT:-22}
+      REDIS_CLOUD_PORT: ${REDIS_CLOUD_PORT:-6380}
+    mem_limit: 32m
+    mem_reservation: 16m
+    cpus: 0.05
+    profiles:
+      - tunnel
+    depends_on:
+      - redis-replica
+
+  # ---------------------------------------------------------------------------
+  #  8. CTO TRADING ALICE - Open Alice Multi-Market Trading Agent
+  #  Menangani saham, crypto, forex, komoditas, dan makro
+  #  Full trading lifecycle: research -> entry -> risk -> monitoring
+  # ---------------------------------------------------------------------------
+  cto-trading-alice:
+    <<: [*defaults]
+    container_name: mas-hybrid-alice
+    hostname: alice.hybrid.mas.local
+    build:
+      context: ./services/cto-trading-alice
+      dockerfile: Dockerfile
+    image: mas/cto-trading-alice:latest
+    ports:
+      - "${ALICE_WEB_PORT:-47331}:47331"
+      - "${ALICE_MCP_PORT:-47332}:47332"
+      - "${ALICE_UTA_PORT:-47333}:47333"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=open-alice
+      - SERVICE_PORT=47331
+      - NODE_ENV=production
+      - OPENALICE_HOME=/data
+      - HOME=/data/home
+      - OPENALICE_BIND_HOST=0.0.0.0
+      - OPENALICE_WEB_PORT=47331
+      - OPENALICE_MCP_PORT=47332
+      - OPENALICE_UTA_PORT=47333
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=${HYBRID_REDIS_URL:-redis://redis-replica:6379/0}
+    depends_on:
+      redis-replica:
+        condition: service_healthy
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:47331/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - hybrid_alice_data:/data:rw
+      - hybrid_workspace:/workspace:rw
+
+  # ---------------------------------------------------------------------------
+  #  9. HEALTH CHECK AGGREGATOR - Endpoint tunggal untuk cek semua agent
+  # ---------------------------------------------------------------------------
+  health-aggregator:
+    <<: [*defaults]
+    container_name: mas-hybrid-health
+    image: nginx:alpine
+    volumes:
+      - ./config/nginx-hybrid.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${HYBRID_HEALTH_PORT:-9090}:80"
+    mem_limit: 16m
+    mem_reservation: 8m
+    cpus: 0.05
+    depends_on:
+      cto-trading-rl:
+        condition: service_healthy
+      cto-trading-hyper:
+        condition: service_healthy
+      cto-commerce:
+        condition: service_healthy
+      cto-trading-alice:
+        condition: service_healthy
+
+# =============================================================================
+#  NETWORKS
+# =============================================================================
+networks:
+  mas-hybrid-net:
+    name: mas-hybrid-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+
+# =============================================================================
+#  VOLUMES
+# =============================================================================
+volumes:
+  hybrid_workspace:
+    name: hybrid_workspace
+    driver: local
+  hybrid_data:
+    name: hybrid_data
+    driver: local
+  hybrid_config:
+    name: hybrid_config
+    driver: local
+  hybrid_models:
+    name: hybrid_models
+    driver: local
+  hybrid_redis:
+    name: hybrid_redis_data
+    driver: local
+  hybrid_alice_data:
+    name: hybrid_alice_data
+    driver: local

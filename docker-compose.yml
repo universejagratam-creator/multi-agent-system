@@ -1,0 +1,386 @@
+# =============================================================================
+#  DOCKER COMPOSE - MULTI-AGENT SYSTEM (MAS) ECOSYSTEM
+#  Arsitektur: CEO (claude-swarm) + 6 CTO/CISO Agents
+#  Framework: affaan-m/claude-swarm sebagai orchestrator
+# =============================================================================
+#
+#  Struktur Organisasi:
+#  ┌──────────────────────────────────────────────────────┐
+#  │                 CEO (claude-swarm)                    │
+#  │          Orchestrator & Task Decomposer              │
+#  ├────────┬────────┬────────┬────────┬────────┬─────────┤
+#  │ CTO    │ CTO    │ CTO    │ CTO    │ CISO   │ CISO    │
+#  │ Office │ Trading│ Trading│Commerce│ Shield │ ECC     │
+#  │JARVIS  │   RL   │Mamba   │  AoC   │Auditor │Harness  │
+#  └────────┴────────┴────────┴────────┴────────┴─────────┘
+#
+#  Resource Note: Intel Celeron N4000 (2 core, 1.9GB RAM)
+#  → Gunakan docker-compose.lightweight.yml untuk mode hemat resource
+#  → Atau sesuaikan MAS_MODE=lightweight di .env
+# =============================================================================
+
+version: "3.9"
+
+# =============================================================================
+#  VARIABEL DEFAULT
+# =============================================================================
+x-defaults: &defaults
+  restart: unless-stopped
+  networks:
+    - mas-net
+  env_file:
+    - .env
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# Resource limits untuk Intel Celeron (1.9GB RAM)
+x-resource-limits: &resource-limits
+  mem_limit: ${MAS_CONTAINER_MEMORY_LIMIT:-256m}
+  mem_reservation: 128m
+  cpus: ${MAS_CPU_LIMIT:-0.5}
+  pids_limit: 100
+
+# Volume mounts yang dishare semua container
+x-volumes: &shared-volumes
+  volumes:
+    - mas_workspace:/workspace:rw
+    - mas_data:/data:rw
+    - mas_config:/config:ro
+    - ./config/swarm.yaml:/workspace/swarm.yaml:ro
+
+# =============================================================================
+#  SERVICES
+# =============================================================================
+services:
+
+  # -------------------------------------------------------------------------
+  #  1. CEO AGENT - Claude Swarm Orchestrator
+  #  Port: 8080 | Repo: affaan-m/claude-swarm
+  #  Fungsi: Task decomposition, parallel agent orchestration, quality gate
+  # -------------------------------------------------------------------------
+  ceo:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-ceo
+    hostname: ceo.mas.local
+    build:
+      context: ./services/ceo
+      dockerfile: Dockerfile
+    image: mas/ceo:latest
+    ports:
+      - "${CEO_PORT:-8080}:8080"
+    environment:
+      - AGENT_ROLE=ceo
+      - AGENT_NAME=claude-swarm
+      - SERVICE_PORT=8080
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDESWARM_MODEL=${CLAUDESWARM_MODEL:-opus}
+      - CLAUDESWARM_BUDGET=${CLAUDESWARM_BUDGET:-5.0}
+      - CLAUDESWARM_MAX_AGENTS=${CLAUDESWARM_MAX_AGENTS:-4}
+      - CLAUDESWARM_QUALITY_GATE=${CLAUDESWARM_QUALITY_GATE:-true}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  #  2. CTO OFFICE AGENT - JARVIS Automation Platform
+  #  Port: 8081 | Repo: affaan-m/JARVIS
+  #  Fungsi: Browser automation, OSINT, intelligence gathering
+  # -------------------------------------------------------------------------
+  cto-office:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-cto-office
+    hostname: cto-office.mas.local
+    build:
+      context: ./services/cto-office
+      dockerfile: Dockerfile
+    image: mas/cto-office:latest
+    ports:
+      - "${CTO_OFFICE_PORT:-8081}:8081"
+    environment:
+      - AGENT_ROLE=cto-office
+      - AGENT_NAME=jarvis
+      - SERVICE_PORT=8081
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - EXA_API_KEY=${EXA_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - CHROME_BIN=/usr/bin/chromium
+      - BROWSER_HEADLESS=${BROWSER_HEADLESS:-true}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  #  3. CTO TRADING RL - Behavioral Reinforcement Learning
+  #  Port: 8082 | Repo: affaan-m/Behavioral_RL
+  #  Fungsi: RL-based trading dengan risk management (CVaR, Prospect Theory)
+  # -------------------------------------------------------------------------
+  cto-trading-rl:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-cto-trading-rl
+    hostname: cto-trading-rl.mas.local
+    build:
+      context: ./services/cto-trading-rl
+      dockerfile: Dockerfile
+    image: mas/cto-trading-rl:latest
+    ports:
+      - "${CTO_TRADING_RL_PORT:-8082}:8082"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=behavioral-rl
+      - SERVICE_PORT=8082
+      - TRADING_MODE=${TRADING_MODE:-paper}
+      - TRADING_SYMBOLS=${TRADING_SYMBOLS:-BTC-USD,ETH-USD}
+      - TRADING_INITIAL_CAPITAL=${TRADING_INITIAL_CAPITAL:-10000}
+      - CVAR_ALPHA=${CVAR_ALPHA:-0.05}
+      - MAX_POSITION_SIZE=${MAX_POSITION_SIZE:-0.1}
+      - WANDB_API_KEY=${WANDB_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - mas_workspace:/workspace:rw
+      - mas_data:/data:rw
+      - mas_config:/config:ro
+      - mas_models:/models:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  #  4. CTO TRADING HYPER - HyperMamba Time-Series
+  #  Port: 8083 | Repo: affaan-m/HyperMamba
+  #  Fungsi: State Space Models untuk prediksi time-series pasar
+  # -------------------------------------------------------------------------
+  cto-trading-hyper:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-cto-trading-hyper
+    hostname: cto-trading-hyper.mas.local
+    build:
+      context: ./services/cto-trading-hyper
+      dockerfile: Dockerfile
+    image: mas/cto-trading-hyper:latest
+    ports:
+      - "${CTO_TRADING_HYPER_PORT:-8083}:8083"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=hypermamba
+      - SERVICE_PORT=8083
+      - TRADING_MODE=${TRADING_MODE:-paper}
+      - TRADING_SYMBOLS=${TRADING_SYMBOLS:-BTC-USD,ETH-USD}
+      - WANDB_API_KEY=${WANDB_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - mas_workspace:/workspace:rw
+      - mas_data:/data:rw
+      - mas_config:/config:ro
+      - mas_models:/models:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  #  5. CTO COMMERCE - Agent of Commerce
+  #  Port: 8084 | Repo: affaan-m/agentofcommerce
+  #  Fungsi: E-commerce otonom, manajemen inventaris, transaksi blockchain
+  # -------------------------------------------------------------------------
+  cto-commerce:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-cto-commerce
+    hostname: cto-commerce.mas.local
+    build:
+      context: ./services/cto-commerce
+      dockerfile: Dockerfile
+    image: mas/cto-commerce:latest
+    ports:
+      - "${CTO_COMMERCE_PORT:-8084}:8084"
+    environment:
+      - AGENT_ROLE=cto-commerce
+      - AGENT_NAME=agentofcommerce
+      - SERVICE_PORT=8084
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:///data/commerce.db}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  #  6. CISO SHIELD - AgentShield Security Scanner
+  #  Port: 8085 | Repo: affaan-m/agentshield
+  #  Fungsi: Security audit untuk konfigurasi agent AI
+  # -------------------------------------------------------------------------
+  ciso-shield:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-ciso-shield
+    hostname: ciso-shield.mas.local
+    build:
+      context: ./services/ciso-shield
+      dockerfile: Dockerfile
+    image: mas/ciso-shield:latest
+    ports:
+      - "${CISO_SHIELD_PORT:-8085}:8085"
+    environment:
+      - AGENT_ROLE=ciso
+      - AGENT_NAME=agentshield
+      - SERVICE_PORT=8085
+      - SHIELD_SCAN_DIRS=${SHIELD_SCAN_DIRS:-/workspace,/data,/config}
+      - SHIELD_MIN_SEVERITY=${SHIELD_MIN_SEVERITY:-medium}
+      - SHIELD_OUTPUT_FORMAT=${SHIELD_OUTPUT_FORMAT:-json}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # CISO Shield independen — tidak perlu menunggu CTO lain
+    # Jalankan scan kapan saja via: docker exec mas-ciso-shield agentshield scan /workspace
+    depends_on: []
+
+  # -------------------------------------------------------------------------
+  #  7. CISO ECC - Everything Claude Code Agent Harness
+  #  Port: 8086 | Repo: affaan-m/ECC
+  #  Fungsi: Agent OS, policy enforcement, skill & memory management
+  # -------------------------------------------------------------------------
+  ciso-ecc:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-ciso-ecc
+    hostname: ciso-ecc.mas.local
+    build:
+      context: ./services/ciso-ecc
+      dockerfile: Dockerfile
+    image: mas/ciso-ecc:latest
+    ports:
+      - "${CISO_ECC_PORT:-8086}:8086"
+    environment:
+      - AGENT_ROLE=ciso
+      - AGENT_NAME=ecc
+      - SERVICE_PORT=8086
+      - ECC_MODE=${ECC_MODE:-guardian}
+      - ECC_SKILLS_DIR=${ECC_SKILLS_DIR:-/data/skills}
+      - ECC_MEMORY_DIR=${ECC_MEMORY_DIR:-/data/memory}
+      - ECC_POLICY_FILE=${ECC_POLICY_FILE:-/config/ecc-policy.yaml}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - ciso-shield
+
+  # -------------------------------------------------------------------------
+  #  8. INFRA: Redis - Message Broker & Cache
+  #  Untuk komunikasi antar-agent melalui pub/sub
+  # -------------------------------------------------------------------------
+  redis:
+    <<: [*defaults]
+    container_name: mas-redis
+    hostname: redis.mas.local
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - mas_redis:/data:rw
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 64m
+    mem_reservation: 32m
+    cpus: 0.2
+
+  # -------------------------------------------------------------------------
+  #  9. INFRA: Watchtower - Auto Update Container (opsional)
+  #  Untuk update image secara otomatis
+  # -------------------------------------------------------------------------
+  watchtower:
+    <<: [*defaults]
+    container_name: mas-watchtower
+    image: containrrr/watchtower:latest
+    command: ["--interval", "86400", "--cleanup", "--label-enable"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    mem_limit: 32m
+    mem_reservation: 16m
+    cpus: 0.1
+    profiles:
+      - monitoring
+
+# =============================================================================
+#  NETWORKS
+# =============================================================================
+networks:
+  mas-net:
+    name: ${MAS_NETWORK_NAME:-mas-net}
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+    labels:
+      description: "Multi-Agent System - Internal Communication Network"
+      project: "mas-ecosystem"
+      version: "1.0"
+
+# =============================================================================
+#  VOLUMES
+# =============================================================================
+volumes:
+  mas_workspace:
+    name: mas_workspace
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_WORKSPACE_DIR:-./workspace}
+      o: bind
+  mas_data:
+    name: mas_data
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_DATA_DIR:-./data}
+      o: bind
+  mas_config:
+    name: mas_config
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_CONFIG_DIR:-./config}
+      o: bind
+  mas_models:
+    name: mas_models
+    driver: local
+  mas_redis:
+    name: mas_redis_data
+    driver: local

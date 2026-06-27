@@ -1,0 +1,258 @@
+# =============================================================================
+#  DOCKER COMPOSE - MINIMAL MODE
+#  Untuk Intel Celeron N4000 DENGAN RAM SANGAT TERBATAS (1.9GB)
+#  Hanya: CEO (claude-swarm) + 1 CTO (JARVIS) + Redis
+# =============================================================================
+#
+#  Strategi:
+#  - Hanya container paling esensial
+#  - Resource limit sangat ketat
+#  - CTO lain bisa dinyalakan manual saat diperlukan
+#
+#  Estimasi RAM: ~400MB - 600MB
+# =============================================================================
+
+version: "3.9"
+
+x-defaults: &defaults
+  restart: unless-stopped
+  networks:
+    - mas-net
+  env_file:
+    - .env
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "3m"
+      max-file: "2"
+
+x-resource-limits: &resource-limits
+  mem_limit: 128m
+  mem_reservation: 64m
+  cpus: 0.25
+  pids_limit: 30
+
+x-volumes: &shared-volumes
+  volumes:
+    - mas_workspace:/workspace:rw
+    - mas_data:/data:rw
+    - mas_config:/config:ro
+
+# =============================================================================
+#  SERVICES (Minimal - Hanya yang paling esensial)
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  #  1. CEO - WAJIB (Orchestrator)
+  # ---------------------------------------------------------------------------
+  ceo:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-ceo
+    hostname: ceo.mas.local
+    build:
+      context: ./services/ceo
+      dockerfile: Dockerfile
+    image: mas/ceo:latest
+    ports:
+      - "${CEO_PORT:-8080}:8080"
+    environment:
+      - AGENT_ROLE=ceo
+      - AGENT_NAME=claude-swarm
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDESWARM_MODEL=haiku
+      - CLAUDESWARM_BUDGET=1.0
+      - CLAUDESWARM_MAX_AGENTS=1
+      - CLAUDESWARM_QUALITY_GATE=false
+      - CLAUDESWARM_NO_UI=true
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  #  2. CTO Office - PRIORITAS UTAMA (Automation)
+  # ---------------------------------------------------------------------------
+  cto-office:
+    <<: [*defaults, *resource-limits, *shared-volumes]
+    container_name: mas-cto-office
+    hostname: cto-office.mas.local
+    build:
+      context: ./services/cto-office
+      dockerfile: Dockerfile
+    image: mas/cto-office:latest
+    ports:
+      - "${CTO_OFFICE_PORT:-8081}:8081"
+    environment:
+      - AGENT_ROLE=cto-office
+      - AGENT_NAME=jarvis
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - BROWSER_HEADLESS=true
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  #  3. CTO Trading RL - SAAT DIPERLUKAN (profile: on-demand)
+  #     Jalankan: docker compose --profile on-demand up -d cto-trading-rl
+  # ---------------------------------------------------------------------------
+  cto-trading-rl:
+    <<: [*defaults, *shared-volumes]
+    container_name: mas-cto-trading-rl
+    hostname: cto-trading-rl.mas.local
+    build:
+      context: ./services/cto-trading-rl
+      dockerfile: Dockerfile
+    image: mas/cto-trading-rl:latest
+    ports:
+      - "${CTO_TRADING_RL_PORT:-8082}:8082"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=behavioral-rl
+      - TRADING_MODE=paper
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: 0.5
+    profiles:
+      - on-demand
+
+  # ---------------------------------------------------------------------------
+  #  4. CTO Trading HyperMamba - SAAT DIPERLUKAN
+  # ---------------------------------------------------------------------------
+  cto-trading-hyper:
+    <<: [*defaults, *shared-volumes]
+    container_name: mas-cto-trading-hyper
+    hostname: cto-trading-hyper.mas.local
+    build:
+      context: ./services/cto-trading-hyper
+      dockerfile: Dockerfile
+    image: mas/cto-trading-hyper:latest
+    ports:
+      - "${CTO_TRADING_HYPER_PORT:-8083}:8083"
+    environment:
+      - AGENT_ROLE=cto-trading
+      - AGENT_NAME=hypermamba
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: 0.5
+    profiles:
+      - on-demand
+
+  # ---------------------------------------------------------------------------
+  #  5. CTO Commerce - SAAT DIPERLUKAN
+  # ---------------------------------------------------------------------------
+  cto-commerce:
+    <<: [*defaults, *shared-volumes]
+    container_name: mas-cto-commerce
+    hostname: cto-commerce.mas.local
+    build:
+      context: ./services/cto-commerce
+      dockerfile: Dockerfile
+    image: mas/cto-commerce:latest
+    ports:
+      - "${CTO_COMMERCE_PORT:-8084}:8084"
+    mem_limit: 192m
+    mem_reservation: 96m
+    cpus: 0.3
+    profiles:
+      - on-demand
+
+  # ---------------------------------------------------------------------------
+  #  6. CISO Shield - SAAT DIPERLUKAN
+  # ---------------------------------------------------------------------------
+  ciso-shield:
+    <<: [*defaults, *shared-volumes]
+    container_name: mas-ciso-shield
+    hostname: ciso-shield.mas.local
+    build:
+      context: ./services/ciso-shield
+      dockerfile: Dockerfile
+    image: mas/ciso-shield:latest
+    ports:
+      - "${CISO_SHIELD_PORT:-8085}:8085"
+    environment:
+      - SHIELD_SCAN_DIRS=/workspace,/data,/config
+    mem_limit: 128m
+    mem_reservation: 64m
+    cpus: 0.2
+    profiles:
+      - on-demand
+
+  # ---------------------------------------------------------------------------
+  #  7. CISO ECC - SAAT DIPERLUKAN
+  # ---------------------------------------------------------------------------
+  ciso-ecc:
+    <<: [*defaults, *shared-volumes]
+    container_name: mas-ciso-ecc
+    hostname: ciso-ecc.mas.local
+    build:
+      context: ./services/ciso-ecc
+      dockerfile: Dockerfile
+    image: mas/ciso-ecc:latest
+    ports:
+      - "${CISO_ECC_PORT:-8086}:8086"
+    environment:
+      - ECC_MODE=guardian
+    mem_limit: 128m
+    mem_reservation: 64m
+    cpus: 0.2
+    profiles:
+      - on-demand
+
+  # ---------------------------------------------------------------------------
+  #  8. INFRA: Redis - Message Broker
+  # ---------------------------------------------------------------------------
+  redis:
+    <<: [*defaults]
+    container_name: mas-redis
+    hostname: redis.mas.local
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - mas_redis:/data:rw
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 32m
+    mem_reservation: 16m
+    cpus: 0.05
+
+# =============================================================================
+#  NETWORKS
+# =============================================================================
+networks:
+  mas-net:
+    name: ${MAS_NETWORK_NAME:-mas-net}
+    driver: bridge
+
+# =============================================================================
+#  VOLUMES
+# =============================================================================
+volumes:
+  mas_workspace:
+    name: mas_workspace
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_WORKSPACE_DIR:-./workspace}
+      o: bind
+  mas_data:
+    name: mas_data
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_DATA_DIR:-./data}
+      o: bind
+  mas_config:
+    name: mas_config
+    driver: local
+    driver_opts:
+      type: none
+      device: ${MAS_CONFIG_DIR:-./config}
+      o: bind
+  mas_redis:
+    name: mas_redis_data
+    driver: local

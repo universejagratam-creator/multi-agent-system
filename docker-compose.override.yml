@@ -1,0 +1,128 @@
+# =============================================================================
+#  DOCKER COMPOSE OVERRIDE - SECRET MANAGEMENT
+#  Mengganti environment variable dengan Docker secrets untuk keamanan
+# =============================================================================
+#
+#  Cara penggunaan:
+#    1. Buat file secrets di ./secrets/ (contoh: echo "sk-ant-xxx" > ./secrets/ANTHROPIC_API_KEY)
+#    2. Jalankan: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+#    3. Atau otomatis: docker compose up -d (docker-compose.override.yml otomatis terbaca)
+#
+#  Keuntungan file-based secrets:
+#    - Tidak muncul di `docker inspect`
+#    - Tidak tercatat di shell history
+#    - File permission bisa diatur (chmod 600)
+#    - Setiap container hanya punya akses ke secrets yang diperlukan
+#
+# =============================================================================
+
+version: "3.9"
+
+# =============================================================================
+#  SECRETS MANAGEMENT
+#  Semua API key disimpan sebagai file di ./secrets/
+#  Container membaca dari /run/secrets/<Nama_VARIABEL>
+# =============================================================================
+secrets:
+  anthropic_key:
+    file: ./secrets/ANTHROPIC_API_KEY
+  openai_key:
+    file: ./secrets/OPENAI_API_KEY
+  gemini_key:
+    file: ./secrets/GEMINI_API_KEY
+  exa_key:
+    file: ./secrets/EXA_API_KEY
+  github_token:
+    file: ./secrets/GITHUB_TOKEN
+  wandb_key:
+    file: ./secrets/WANDB_API_KEY
+  market_data_key:
+    file: ./secrets/MARKET_DATA_API_KEY
+  solana_private_key:
+    file: ./secrets/SOLANA_PRIVATE_KEY
+
+# =============================================================================
+#  SERVICE OVERRIDE
+#  Setiap service hanya mendapat secrets yang diperlukan untuk tugasnya
+# =============================================================================
+services:
+
+  # --- CEO: Hanya butuh Anthropic + OpenAI ---
+  ceo:
+    secrets:
+      - anthropic_key
+      - openai_key
+    environment:
+      # Secrets fallback: jika file tidak ada, pakai env var
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
+      - OPENAI_API_KEY_FILE=/run/secrets/openai_key
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+  # --- CTO Office: Butuh Anthropic + Exa + GitHub ---
+  cto-office:
+    secrets:
+      - anthropic_key
+      - exa_key
+      - github_token
+    environment:
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
+      - EXA_API_KEY_FILE=/run/secrets/exa_key
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - EXA_API_KEY=${EXA_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+
+  # --- CTO Trading: Butuh Anthropic + W&B + Market Data ---
+  cto-trading-rl:
+    secrets:
+      - anthropic_key
+      - wandb_key
+      - market_data_key
+    environment:
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
+      - WANDB_API_KEY_FILE=/run/secrets/wandb_key
+      - MARKET_DATA_API_KEY_FILE=/run/secrets/market_data_key
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY:-}
+
+  cto-trading-hyper:
+    secrets:
+      - anthropic_key
+      - wandb_key
+      - market_data_key
+    environment:
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
+      - WANDB_API_KEY_FILE=/run/secrets/wandb_key
+      - MARKET_DATA_API_KEY_FILE=/run/secrets/market_data_key
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - MARKET_DATA_API_KEY=${MARKET_DATA_API_KEY:-}
+
+  # --- CTO Commerce: Butuh Anthropic + Solana ---
+  cto-commerce:
+    secrets:
+      - anthropic_key
+      - solana_private_key
+    environment:
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
+      - SOLANA_PRIVATE_KEY_FILE=/run/secrets/solana_private_key
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - SOLANA_PRIVATE_KEY=${SOLANA_PRIVATE_KEY:-}
+
+  # --- CISO Shield: Butuh Anthropic ---
+  ciso-shield:
+    secrets:
+      - anthropic_key
+    environment:
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+  # --- CISO ECC: Butuh Anthropic ---
+  ciso-ecc:
+    secrets:
+      - anthropic_key
+    environment:
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
