@@ -12,6 +12,7 @@
 |---------|-----------|
 | **README.md** | Dokumentasi utama ini |
 | **docs/JAGRATAM-BINGX-ECC-SYSTEM.md** | Sistem spesifikasi JAGRATAM-BINGX: 18 bot, ECC engine, strategi $10 Profit Harvester |
+| **docs/CONFIG-REFERENCE.md** | Referensi konfigurasi JAGRATAM: API keys, AI pipeline, capital allocation, 18 bot parameters, whale wallets |
 | **ARCHITECTURE_ANALYSIS.md** | Analisis arsitektur untuk RAM 2GB, optimasi resource, mode operasi |
 | **CI_CD_ANALYSIS.md** | Analisis CI/CD untuk trading dengan GitHub Actions |
 | **DEPLOY.md** | Panduan step-by-step deploy VPS hybrid |
