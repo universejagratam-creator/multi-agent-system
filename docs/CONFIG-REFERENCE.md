@@ -113,4 +113,51 @@
 
 ---
 
-*Generated: 2026-06-28 — Sumber: `config/*.json` dari JAGRATAM-FIXED*
+---
+
+## 8. BingX Feature Coverage — Robot Mapping
+
+> **Sumber:** `PERBAIKAN ROBOT.docx` — Semua fitur BingX yang sudah / akan dirobotkan
+
+### ✅ Sudah Terrobot
+
+| Fitur BingX | Bot / Workflow | Status |
+|-------------|----------------|--------|
+| **Futures Perpetual** | `futures_bot`, `dev_bot` | ✅ Active — Scalping Multi-TF |
+| **Spot Trading** | `spot_bot` | ✅ Active — DCA Cerdas |
+| **Copy Trading (Futures)** | `copytrade_bot`, `copytrade_combo` | ✅ Active — AI Filtered |
+| **Copy Trading (Spot)** | `copytrade_bot` | ✅ Active — Spot copy |
+| **Futures Grid** | `swing_momentum_strategy` (allocation.json) | ✅ Tercover — Grid 2x Leverage |
+| **Lending (Simple Earn)** | `staking_bot` | ✅ Active — Multi-asset staking |
+| **Price Analysis** | `trading.yml` → analyze job | ✅ Active — Market analysis |
+
+### 🚧 Dalam Pengembangan / Rencana
+
+| Fitur BingX | Rencana Implementasi | Prioritas |
+|-------------|---------------------|-----------|
+| **Spot Infinity Grid** | Bot dedicated `infinity_grid_bot` | 🟡 Medium |
+| **Martingale (Spot/Futures)** | Modul `martingale_strategy` di strategy_config | 🟡 Medium |
+| **Signal Strategy** | Integrasi TradingView webhook → `trading.yml` | 🟢 High |
+| **Elite Trader** | Filter lanjutan + scoring dari leaderboard BingX | 🟢 High |
+| **Shark Fin** | Bot structured product `shark_fin_bot` | 🔴 Low |
+| **Dual Investment** | Bot `dual_investment_bot` — auto-rollover | 🔴 Low |
+| **P2P Trading** | Monitor spread P2P → arbitrage bot | 🟡 Medium |
+| **Affiliate Program** | Tracking referral + komisi | 🔴 Low |
+| **Currency Converter** | API endpoint via Redis | 🔴 Low |
+
+### 🔗 Mapping Workflow vs Bot
+
+```
+trading.yml (GitHub Actions)          Lokal (JAGRATAM-FIXED)
+├── analyze       ←                  ├── futures_bot / spot_bot
+├── alice         ← OpenAlice        ├── arbitrage_bot
+├── trade         ←                  ├── whale_bot / copytrade_bot
+├── backtest      ←                  ├── dev_bot (scalping)
+├── train         ← ML training      ├── meme_sniper / meme_tracker
+├── report        ← PDF report       ├── staking_bot / farming_bot
+└── security-scan ←                  └── mega_combo / super_combo
+```
+
+---
+
+*Generated: 2026-06-28*

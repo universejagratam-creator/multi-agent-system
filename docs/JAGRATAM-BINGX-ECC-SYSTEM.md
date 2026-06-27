@@ -71,3 +71,14 @@ tail -f logs/auto_profit.log
 ```
 
 **FILOSOFI:** *"Lebih baik profit $10 seratus kali sehari daripada menunggu profit $1000 yang tidak kunjung datang."*
+
+---
+
+### 📚 Referensi Terkait
+
+| Dokumen | Isi |
+|---------|-----|
+| [CONFIG-REFERENCE.md](CONFIG-REFERENCE.md) | Detail konfigurasi: AI pipeline, capital allocation, bot parameters, env vars, BingX feature mapping |
+| [ARCHITECTURE_ANALYSIS.md](../ARCHITECTURE_ANALYSIS.md) | Analisis arsitektur RAM 2GB, mode operasi hybrid |
+| [CI_CD_ANALYSIS.md](../CI_CD_ANALYSIS.md) | CI/CD pipeline untuk trading dengan GitHub Actions |
+| [trading.yml](../.github/workflows/trading.yml) | GitHub Actions workflow — 8 jobs: analyze, trade, alice, backtest, dll |
