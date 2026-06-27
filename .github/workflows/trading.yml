@@ -1,11 +1,13 @@
 name: MAS Trading Pipeline
 
 on:
+  # Scheduled triggers - market hours analysis
   schedule:
     - cron: '30 13 * * 1-5'
     - cron: '0 20 * * 1-5'
     - cron: '0 0 * * *'
     - cron: '0 0 * * 0'
+  # Manual trigger via GitHub UI or API
   workflow_dispatch:
     inputs:
       action:
@@ -14,12 +16,12 @@ on:
         default: analyze
         type: choice
         options:
-          - analyze
-          - alice
-          - trade
-          - backtest
-          - train
-          - report
+          - analyze   # Market analysis
+          - alice     # Open Alice multi-market
+          - trade     # Execute trade
+          - backtest  # Run backtest
+          - train     # Train model
+          - report    # Generate report
       symbol:
         description: Trading symbol
         required: false
@@ -39,6 +41,7 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
+  # Market analysis job - triggered by schedule or manual
   analyze:
     name: Market Analysis
     runs-on: ubuntu-latest
@@ -67,6 +70,7 @@ jobs:
           path: /tmp/report.md
           retention-days: 7
 
+  # Trade execution job - requires manual trigger
   trade:
     name: Execute Strategy
     runs-on: ubuntu-latest
@@ -88,6 +92,7 @@ jobs:
           echo "Executing $TRADING_MODE trade for $SYMBOL..."
           python trade.py --symbol "$SYMBOL" --mode "$TRADING_MODE" 2>/dev/null || echo "Simulated execution"
 
+  # Backtest job - runs on schedule or manual
   backtest:
     name: Run Backtest
     runs-on: ubuntu-latest
@@ -106,6 +111,7 @@ jobs:
         run: |
           python backtest.py --strategies conservative,aggressive,arbitrage --symbols BTC-USD,ETH-USD --output /tmp/backtest
 
+  # ML model training job - manual trigger
   train:
     name: Train Model
     runs-on: ubuntu-latest
@@ -125,6 +131,7 @@ jobs:
         run: |
           python train.py --model behavioral-rl --epochs 100 --data-start 2024-01-01
 
+  # Report generation job - manual trigger
   report:
     name: Generate Report
     runs-on: ubuntu-latest
@@ -146,6 +153,7 @@ jobs:
           path: /tmp/trading-report.pdf
           retention-days: 90
 
+  # Open Alice multi-market analysis - manual trigger
   alice:
     name: Open Alice Analysis
     runs-on: ubuntu-latest
@@ -202,6 +210,7 @@ jobs:
           path: /tmp/alice-report.md
           retention-days: 7
 
+  # Security audit job - manual trigger
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -225,6 +234,7 @@ jobs:
           name: security-scan-${{ github.run_id }}
           path: security-report.json
 
+  # Notification job - runs after all trading jobs
   notify:
     name: Send Notification
     runs-on: ubuntu-latest
