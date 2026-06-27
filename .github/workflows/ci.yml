@@ -34,13 +34,13 @@ jobs:
           echo "=== Validating docker-compose files ==="
           for f in docker-compose.yml docker-compose.lightweight.yml docker-compose.minimal.yml docker-compose.hybrid.yml docker-compose.override.yml; do
             if [[ -f "$f" ]]; then
-              python -c "import yaml; yaml.safe_load(open('$f')); print(f'  ✅ $f: valid')"
+              python -c "import yaml; yaml.safe_load(open('$f')); print(f'  PASS: $f valid')"
             fi
           done
 
           echo "=== Validating workflow files ==="
           for f in .github/workflows/*.yml; do
-            python -c "import yaml; yaml.safe_load(open('$f')); print(f'  ✅ $f: valid')"
+            python -c "import yaml; yaml.safe_load(open('$f')); print(f'  PASS: $f valid')"
           done
 
   ###########################################################################
@@ -78,7 +78,7 @@ jobs:
           for f in docker-compose.yml docker-compose.lightweight.yml docker-compose.minimal.yml docker-compose.hybrid.yml; do
             if [[ -f "$f" ]]; then
               echo "=== Validating $f ==="
-              docker compose -f "$f" config --quiet 2>&1 && echo "  ✅ $f: valid" || echo "  ❌ $f: invalid"
+              docker compose -f "$f" config --quiet 2>&1 && echo "  PASS: $f valid" || echo "  FAIL: $f invalid"
             fi
           done
 
@@ -86,24 +86,24 @@ jobs:
         run: |
           PORTS=$(grep -roh '"[0-9]\+:808[0-9]\+"' --include='docker-compose*.yml' . 2>/dev/null | sort | uniq -d || true)
           if [ -n "$PORTS" ]; then
-            echo "⚠️ Duplicate ports found: $PORTS"
+            echo "WARN: Duplicate ports found: $PORTS"
           else
-            echo "✅ No duplicate ports"
+            echo "PASS: No duplicate ports"
           fi
           # Check Open Alice unique ports (47331-3)
-          grep -q '47331' docker-compose.hybrid.yml 2>/dev/null && echo "✅ Open Alice port 47331 found" || echo "⚠️ Open Alice port 47331 missing"
-          grep -q '47332' docker-compose.hybrid.yml 2>/dev/null && echo "✅ Open Alice port 47332 found" || echo "⚠️ Open Alice port 47332 missing"
-          grep -q '47333' docker-compose.hybrid.yml 2>/dev/null && echo "✅ Open Alice port 47333 found" || echo "⚠️ Open Alice port 47333 missing"
+          grep -q '47331' docker-compose.hybrid.yml 2>/dev/null && echo "PASS: Open Alice port 47331 found" || echo "WARN: Port 47331 missing"
+          grep -q '47332' docker-compose.hybrid.yml 2>/dev/null && echo "PASS: Open Alice port 47332 found" || echo "WARN: Port 47332 missing"
+          grep -q '47333' docker-compose.hybrid.yml 2>/dev/null && echo "PASS: Open Alice port 47333 found" || echo "WARN: Port 47333 missing"
 
       - name: Check Port Consistency
         run: |
           echo "=== Checking port conflicts ==="
           ports=$(grep -roh 'published: [0-9]*\|"[0-9]*:[0-9]*"' docker-compose*.yml 2>/dev/null | grep -oP '[0-9]+' | sort -n | uniq -d)
           if [[ -n "$ports" ]]; then
-            echo "❌ Port conflicts found: $ports"
+            echo "FAIL: Port conflicts found: $ports"
             exit 1
           else
-            echo "✅ No port conflicts"
+            echo "PASS: No port conflicts"
           fi
 
       - name: Check Container Name Consistency
@@ -134,15 +134,15 @@ jobs:
           for pattern in "${patterns[@]}"; do
             results=$(grep -rn "$pattern" --include='*.py' --include='*.sh' --include='*.yml' --include='*.yaml' --include='*.json' --include='*.md' . 2>/dev/null | grep -v '.git/' | grep -v '__pycache__' | grep -v 'secrets/' | grep -v '.env.example' || true)
             if [[ -n "$results" ]]; then
-              echo "❌ Found potential secrets matching '$pattern':"
+              echo "WARN: Found potential secrets matching '$pattern':"
               echo "$results"
               found=$((found + 1))
             fi
           done
           if [[ $found -eq 0 ]]; then
-            echo "✅ No hardcoded secrets found"
+            echo "PASS: No hardcoded secrets found"
           else
-            echo "⚠️  Found $found potential secrets - review above"
+            echo "WARN: Found $found potential secrets - review above"
           fi
 
   ###########################################################################
@@ -161,14 +161,13 @@ jobs:
               name=$(basename "$dir")
               echo "=== Checking ${name}/Dockerfile ==="
               docker pull python:3.11-slim --quiet 2>/dev/null || true
-              # Only syntax check, not full build (too slow)
               head -5 "${dir}Dockerfile"
-              echo "  ✅ $name: Dockerfile exists"
+              echo "  PASS: $name Dockerfile exists"
             fi
           done
 
   ###########################################################################
-  # JOB 6: WORKFLOW DRY RUN - Simulasi GitHub Actions workflow
+  # JOB 6: WORKFLOW DRY RUN - Cek workflow structure (YAML syntax by yaml-lint)
   ###########################################################################
   workflow-dryrun:
     name: 'Workflow Dry Run'
@@ -176,40 +175,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate Workflow Syntax
+      - name: Validate Workflow Structure
         run: |
           for f in .github/workflows/*.yml; do
             echo "=== Validating $f ==="
-            # Check required fields
-            if ! grep -q 'name:' "$f"; then
-              echo "  ❌ Missing 'name:' field"
-              exit 1
-            fi
-            if ! grep -q 'on:' "$f"; then
-              echo "  ❌ Missing 'on:' trigger"
-              exit 1
-            fi
-            if ! grep -q 'jobs:' "$f"; then
-              echo "  ❌ Missing 'jobs:' section"
-              exit 1
-            fi
-            python -c "
-import yaml
-with open('$f') as fh:
-    data = yaml.safe_load(fh)
-    jobs = data.get('jobs', {})
-    for job_name, job_data in jobs.items():
-        steps = job_data.get('steps', [])
-        if not steps:
-            print(f'  ⚠️  Job \"{job_name}\" has no steps')
-        else:
-            print(f'  ✅ Job \"{job_name}\": {len(steps)} steps')
-        # Check for uses/run requirement
-        for step in steps:
-            if not step.get('uses') and not step.get('run'):
-                print(f'    ⚠️  Step missing both uses and run')
-"
-            echo "  ✅ $f: valid workflow"
+            grep -q 'name:' "$f" || { echo "FAIL: Missing name:"; exit 1; }
+            grep -q 'on:' "$f"   || { echo "FAIL: Missing on:"; exit 1; }
+            grep -q 'jobs:' "$f" || { echo "FAIL: Missing jobs:"; exit 1; }
+            # Count jobs using grep
+            job_count=$(grep -c '^  [a-z]' "$f" 2>/dev/null || echo 0)
+            echo "PASS: $f has all required fields ($job_count jobs detected)"
           done
 
   ###########################################################################
@@ -223,9 +198,9 @@ with open('$f') as fh:
 
       - name: Check setup.sh syntax
         run: |
-          bash -n setup.sh && echo "✅ setup.sh: syntax OK"
-          bash -n scripts/remote-sync.sh && echo "✅ remote-sync.sh: syntax OK"
-          bash -n scripts/cloud-init.sh && echo "✅ cloud-init.sh: syntax OK"
+          bash -n setup.sh && echo "PASS: setup.sh syntax OK"
+          bash -n scripts/remote-sync.sh && echo "PASS: remote-sync.sh syntax OK"
+          bash -n scripts/cloud-init.sh && echo "PASS: cloud-init.sh syntax OK"
 
   ###########################################################################
   # SUMMARY
@@ -253,7 +228,7 @@ with open('$f') as fh:
           if [[ "${{ needs.yaml-lint.result }}" == "success" && \
                 "${{ needs.compose-lint.result }}" == "success" && \
                 "${{ needs.workflow-dryrun.result }}" == "success" ]]; then
-            echo "✅ All critical checks passed!"
+            echo "PASS: All critical checks passed!"
           else
-            echo "⚠️  Some checks failed - review above"
+            echo "WARN: Some checks failed - review above"
           fi
