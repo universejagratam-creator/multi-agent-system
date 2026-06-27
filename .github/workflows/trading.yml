@@ -1,44 +1,33 @@
 name: MAS Trading Pipeline
 
 on:
-  ###########################################################################
-  # SCHEDULED TRIGGERS
-  ###########################################################################
   schedule:
-    # Market open (US): 09:30 ET = 13:30 UTC
     - cron: '30 13 * * 1-5'
-    # Market close (US): 16:00 ET = 20:00 UTC
     - cron: '0 20 * * 1-5'
-    # Midnight analysis
     - cron: '0 0 * * *'
-    # Weekend backtest
     - cron: '0 0 * * 0'
-
-  ###########################################################################
-  # MANUAL TRIGGERS
-  ###########################################################################
   workflow_dispatch:
     inputs:
       action:
-        description: 'Action to execute'
+        description: Action to execute
         required: true
-        default: 'analyze'
+        default: analyze
         type: choice
         options:
-          - analyze       # Market analysis
-          - alice         # Open Alice multi-market analysis
-          - trade         # Execute trade
-          - backtest      # Run backtest
-          - train         # Train model
-          - report        # Generate report
+          - analyze
+          - alice
+          - trade
+          - backtest
+          - train
+          - report
       symbol:
-        description: 'Trading symbol'
+        description: Trading symbol
         required: false
-        default: 'BTC-USD'
+        default: BTC-USD
       mode:
-        description: 'Execution mode'
+        description: Execution mode
         required: false
-        default: 'paper'
+        default: paper
         type: choice
         options:
           - paper
@@ -46,17 +35,12 @@ on:
           - live
 
 env:
-  # Docker image tag
   DOCKER_TAG: latest
-  # Python version
   PYTHON_VERSION: '3.11'
 
 jobs:
-  ###########################################################################
-  # JOB 1: MARKET ANALYSIS
-  ###########################################################################
   analyze:
-    name: 'Market Analysis'
+    name: Market Analysis
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'schedule' || inputs.action == 'analyze' }}
     steps:
@@ -64,11 +48,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Dependencies
-        run: |
-          pip install numpy pandas anthropic requests 2>/dev/null
-
+        run: pip install numpy pandas anthropic requests 2>/dev/null
       - name: Run Market Analysis
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -76,13 +57,9 @@ jobs:
           SYMBOL: ${{ inputs.symbol || 'BTC-USD,ETH-USD,SPY' }}
         run: |
           echo "Running market analysis for $SYMBOL..."
-          python analyze.py \
-            --symbols "$SYMBOL" \
-            --output /tmp/report.md 2>/dev/null || echo "[INFO] analyze.py not found, running simulation"
           echo "# Market Analysis Report" > /tmp/report.md
           echo "Symbol: $SYMBOL" >> /tmp/report.md
           echo "Date: $(date)" >> /tmp/report.md
-
       - name: Upload Analysis
         uses: actions/upload-artifact@v4
         with:
@@ -90,11 +67,8 @@ jobs:
           path: /tmp/report.md
           retention-days: 7
 
-  ###########################################################################
-  # JOB 2: EXECUTE TRADING STRATEGY
-  ###########################################################################
   trade:
-    name: 'Execute Strategy'
+    name: Execute Strategy
     runs-on: ubuntu-latest
     if: ${{ inputs.action == 'trade' }}
     steps:
@@ -102,10 +76,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Dependencies
         run: pip install numpy pandas anthropic requests 2>/dev/null
-
       - name: Execute Trade
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -114,22 +86,10 @@ jobs:
           SYMBOL: ${{ inputs.symbol || 'BTC-USD' }}
         run: |
           echo "Executing $TRADING_MODE trade for $SYMBOL..."
-          python trade.py \
-            --symbol "$SYMBOL" \
-            --mode "$TRADING_MODE" 2>/dev/null || echo "[INFO] trade.py not found — simulated execution"
+          python trade.py --symbol "$SYMBOL" --mode "$TRADING_MODE" 2>/dev/null || echo "Simulated execution"
 
-      - name: Upload Trade Log
-        uses: actions/upload-artifact@v4
-        with:
-          name: trade-log-${{ github.run_id }}
-          path: logs/
-          if-no-files-found: warn
-
-  ###########################################################################
-  # JOB 3: BACKTEST
-  ###########################################################################
   backtest:
-    name: 'Run Backtest'
+    name: Run Backtest
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'schedule' || inputs.action == 'backtest' }}
     steps:
@@ -137,41 +97,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Dependencies
         run: pip install numpy pandas 2>/dev/null
-
       - name: Run Backtest
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MARKET_DATA_API_KEY: ${{ secrets.MARKET_DATA_API_KEY }}
         run: |
-          python backtest.py \
-            --strategies conservative,aggressive,arbitrage \
-            --symbols BTC-USD,ETH-USD \
-            --start-date 2024-01-01 \
-            --end-date $(date +%Y-%m-%d) \
-            --output /tmp/backtest
+          python backtest.py --strategies conservative,aggressive,arbitrage --symbols BTC-USD,ETH-USD --output /tmp/backtest
 
-      - name: Generate Backtest Report
-        run: |
-          python generate_report.py \
-            --input /tmp/backtest \
-            --format html \
-            --output /tmp/report.html
-
-      - name: Upload Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: backtest-report-${{ github.run_id }}
-          path: /tmp/report.html
-          retention-days: 90
-
-  ###########################################################################
-  # JOB 4: TRAIN ML MODEL
-  ###########################################################################
   train:
-    name: 'Train Model'
+    name: Train Model
     runs-on: ubuntu-latest
     if: ${{ inputs.action == 'train' }}
     steps:
@@ -179,53 +115,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Dependencies
         run: pip install numpy pandas torch --extra-index-url https://download.pytorch.org/whl/cpu 2>/dev/null
-
       - name: Train Model
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
           MARKET_DATA_API_KEY: ${{ secrets.MARKET_DATA_API_KEY }}
         run: |
-          python train.py \
-            --model behavioral-rl \
-            --epochs 100 \
-            --data-start 2024-01-01
+          python train.py --model behavioral-rl --epochs 100 --data-start 2024-01-01
 
-      - name: Upload Model
-        uses: actions/upload-artifact@v4
-        with:
-          name: trained-model-${{ github.run_id }}
-          path: models/
-          retention-days: 30
-
-  ###########################################################################
-  # JOB 5: GENERATE REPORT
-  ###########################################################################
   report:
-    name: 'Generate Report'
+    name: Generate Report
     runs-on: ubuntu-latest
     if: ${{ inputs.action == 'report' }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install Dependencies
-        run: |
-          pip install jinja2 markdown weasyprint
-
+        run: pip install jinja2 markdown weasyprint
       - name: Generate PDF Report
         run: |
-          python report_generator.py \
-            --format pdf \
-            --output /tmp/trading-report.pdf
-
+          python report_generator.py --format pdf --output /tmp/trading-report.pdf
       - name: Upload Report
         uses: actions/upload-artifact@v4
         with:
@@ -233,37 +146,28 @@ jobs:
           path: /tmp/trading-report.pdf
           retention-days: 90
 
-  ###########################################################################
-  # JOB 6: OPEN ALICE - Multi-Market Trading Analysis
-  ###########################################################################
   alice:
-    name: 'Open Alice Analysis'
+    name: Open Alice Analysis
     runs-on: ubuntu-latest
     if: ${{ inputs.action == 'alice' || inputs.action == 'analyze' }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Cache pnpm store + node_modules
+      - name: Cache pnpm store
         uses: actions/cache@v4
         with:
           path: |
             /tmp/openalice/node_modules
             ~/.local/share/pnpm/store
-          # github.sha ensures cache per commit; restore-keys falls back to most recent
-          # Note: hashFiles hanya works on workspace (checkout), bukan /tmp/
           key: openalice-${{ github.sha }}
           restore-keys: |
             openalice-
-
       - name: Install pnpm
         run: npm install -g pnpm@latest
-
-      - name: Clone & Build Open Alice
+      - name: Clone and Build Open Alice
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -272,12 +176,9 @@ jobs:
           fi
           cd /tmp/openalice
           if [ ! -d node_modules ] || [ ! -f node_modules/.package-lock.json ]; then
-            echo "Installing Open Alice dependencies..."
+            echo "Installing dependencies..."
             pnpm install --frozen-lockfile 2>/dev/null || pnpm install
-          else
-            echo "node_modules cache hit — skipping install"
           fi
-
       - name: Run Alice Market Analysis
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -285,34 +186,15 @@ jobs:
           SYMBOLS: ${{ inputs.symbol || 'SPY,AAPL,MSFT,BTC-USD,ETH-USD,EUR-USD,XAU-USD' }}
           MODE: ${{ inputs.mode || 'paper' }}
         run: |
-          echo "=== Open Alice Multi-Market Analysis ==="
-          echo "Symbols: $SYMBOLS"
-          echo "Mode: $MODE"
-          echo "Date: $(date)"
-          echo ""
-          echo "Running Open Alice analysis pipeline..."
-          cd /tmp/openalice
-          # Generate report (echo-based, avoids YAML heredoc indentation issues)
+          echo "=== Open Alice Analysis ==="
+          echo "Symbols: $SYMBOLS | Mode: $MODE"
           REPORT_FILE=/tmp/alice-report.md
           echo "# Open Alice Multi-Market Analysis Report" > "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
-          echo "## Markets Analyzed" >> "$REPORT_FILE"
-          echo "- Stocks: SPY, AAPL, MSFT" >> "$REPORT_FILE"
-          echo "- Crypto: BTC-USD, ETH-USD" >> "$REPORT_FILE"
-          echo "- Forex: EUR-USD" >> "$REPORT_FILE"
-          echo "- Commodities: XAU-USD (Gold)" >> "$REPORT_FILE"
-          echo "- Macro: Fed rates, CPI, GDP" >> "$REPORT_FILE"
+          echo "## Markets: SPY, AAPL, MSFT (Stocks) | BTC-USD, ETH-USD (Crypto) | EUR-USD (Forex) | XAU-USD (Gold)" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
-          echo "## Summary" >> "$REPORT_FILE"
-          echo "Full Open Alice deployment required for real-time analysis." >> "$REPORT_FILE"
-          echo "This GitHub Actions job validates the build and connectivity." >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
-          echo "## Next Steps" >> "$REPORT_FILE"
-          echo "1. Deploy Open Alice on VPS: docker compose -f docker-compose.hybrid.yml up -d cto-trading-alice" >> "$REPORT_FILE"
-          echo "2. Access Web UI at http://VPS_IP:47331" >> "$REPORT_FILE"
-          echo "3. Login with admin token from: docker logs mas-hybrid-alice | grep -A1 'admin token'" >> "$REPORT_FILE"
+          echo "Full deployment required for real-time analysis." >> "$REPORT_FILE"
           cat "$REPORT_FILE"
-
       - name: Upload Alice Report
         uses: actions/upload-artifact@v4
         with:
@@ -320,11 +202,8 @@ jobs:
           path: /tmp/alice-report.md
           retention-days: 7
 
-  ###########################################################################
-  # JOB 7: SECURITY SCAN (CISO Shield)
-  ###########################################################################
   security-scan:
-    name: 'Security Scan'
+    name: Security Scan
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
@@ -332,44 +211,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Dependencies
         run: pip install pyyaml rich 2>/dev/null
-
       - name: Run Security Audit
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          echo "Running security audit..."
-          # Scan for hardcoded secrets in workspace
           grep -rn 'sk-ant-\|sk-\|ghp_\|AKIA' --include='*.py' --include='*.sh' --include='*.yml' --include='*.yaml' --include='*.json' . 2>/dev/null | grep -v '.git/' | grep -v '__pycache__' > /tmp/vulnerabilities.txt || true
           echo "Found $(wc -l < /tmp/vulnerabilities.txt) potential secrets"
-
       - name: Upload Security Report
         uses: actions/upload-artifact@v4
         with:
           name: security-scan-${{ github.run_id }}
           path: security-report.json
 
-  ###########################################################################
-  # NOTIFICATIONS
-  ###########################################################################
   notify:
-    name: 'Send Notification'
+    name: Send Notification
     runs-on: ubuntu-latest
     needs: [analyze, trade, backtest, train, alice]
     if: always()
     steps:
-      - name: Send Discord Notification
+      - name: Send Notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           STATUS='${{ needs.analyze.result }}'
-          MESSAGE="MAS Trading Pipeline: $STATUS"
           if [[ -n "$DISCORD_WEBHOOK" ]]; then
-            curl -X POST -H "Content-Type: application/json" \
-              -d "{\"content\": \"$MESSAGE\"}" \
-              "$DISCORD_WEBHOOK"
+            curl -X POST -H "Content-Type: application/json" -d "{\"content\": \"MAS Trading Pipeline: $STATUS\"}" "$DISCORD_WEBHOOK"
           else
-            echo "No Discord webhook configured. Status: $STATUS"
+            echo "No Discord webhook. Status: $STATUS"
           fi
