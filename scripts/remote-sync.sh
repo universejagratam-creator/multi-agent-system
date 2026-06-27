@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # =============================================================================
 #  REMOTE-SYNC.SH - Local to Cloud Synchronization Tool
 #  Menghubungkan laptop Celeron (local) dengan VPS/GitHub Actions (cloud)
@@ -167,7 +168,7 @@ deploy_cloud() {
 
     # Eksekusi docker compose di remote
     print_info "Menjalankan container di cloud VPS..."
-    ssh "${SSH_USER}@${SSH_HOST}" -p "$SSH_PORT" bash -s << REMOTESCRIPT
+    ssh "${SSH_USER}@${SSH_HOST}" -p "$SSH_PORT" bash -s << 'REMOTESCRIPT'
         set -euo pipefail
         CLOUD_DIR="${CLOUD_DIR:-/root/multi-agent-system}"
         cd "\$CLOUD_DIR"
