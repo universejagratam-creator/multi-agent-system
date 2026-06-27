@@ -1,0 +1,44 @@
+# =============================================================================
+#  .gitattributes - Normalisasi line endings untuk Multi-Agent System
+#  Paksa LF untuk file yang perlu kompatibel dengan Linux/ShellCheck/Docker
+# =============================================================================
+
+# Shell scripts HARUS LF (ShellCheck peduli CRLF)
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Python files
+*.py text eol=lf
+
+# YAML files (Docker Compose, GitHub Actions)
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Docker
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Konfigurasi
+*.env text eol=lf
+*.env.example text eol=lf
+*.conf text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# JSON
+*.json text eol=lf
+
+# Binary files - jangan normalize
+*.png binary
+*.jpg binary
+*.ico binary
+*.gz binary
+*.zip binary
+*.tar binary
+
+# Git files
+.gitignore text eol=lf
+.gitattributes text eol=lf
